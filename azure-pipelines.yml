@@ -1,0 +1,116 @@
+trigger:
+- main
+
+pool:
+  vmImage: windows-latest
+
+variables:
+- group: vg-iac
+
+stages:
+- stage: PLAN
+  displayName: "Terraform PLAN"
+  jobs:
+  - job: PlanJob
+    displayName: "Init + fmt + validate + plan"
+    steps:
+    - checkout: self
+
+    - powershell: |
+        choco install terraform -y
+        terraform -version
+      displayName: "Install Terraform"
+
+    - task: AzureCLI@2
+      displayName: "Terraform Init (Remote State)"
+      inputs:
+        azureSubscription: "SC-Azure-Terraform"
+        scriptType: "ps"
+        scriptLocation: "inlineScript"
+        inlineScript: |
+          cd iac-vm-lab
+          terraform init `
+            -backend-config="resource_group_name=$(TFSTATE_RG)" `
+            -backend-config="storage_account_name=$(TFSTATE_STORAGE)" `
+            -backend-config="container_name=$(TFSTATE_CONTAINER)" `
+            -backend-config="key=$(TFSTATE_KEY)"
+
+    - powershell: |
+        cd iac-vm-lab
+        terraform fmt -check
+      displayName: "Terraform fmt (check)"
+
+    - powershell: |
+        cd iac-vm-lab
+        terraform validate
+      displayName: "Terraform validate"
+
+    - task: AzureCLI@2
+      displayName: "Terraform plan"
+      inputs:
+        azureSubscription: "SC-Azure-Terraform"
+        scriptType: "ps"
+        scriptLocation: "inlineScript"
+        inlineScript: |
+          cd iac-vm-lab
+          terraform plan `
+            -out=tfplan `
+            -var="location=$(TF_LOCATION)" `
+            -var="rg_name=$(TF_RG_NAME)" `
+            -var="env=$(TF_ENV)" `
+            -var="vm_name=$(TF_VM_NAME)" `
+            -var="admin_username=$(TF_ADMIN_USERNAME)" `
+            -var="admin_password=$(TF_ADMIN_PASSWORD)" `
+            -var="vnet_cidr=$(TF_VNET_CIDR)" `
+            -var="subnet_cidr=$(TF_SUBNET_CIDR)" `
+            -var="allowed_rdp_ip=$(TF_ALLOWED_RDP_IP)"
+
+    - publish: iac-vm-lab/tfplan
+      artifact: tfplan
+      displayName: "Publish tfplan artifact"
+
+- stage: APPLY
+  displayName: "Terraform APPLY (Approval)"
+  dependsOn: PLAN
+  condition: succeeded()
+  jobs:
+  - deployment: ApplyDeployment
+    displayName: "Apply Terraform"
+    environment: "prod"
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - checkout: self
+
+          - powershell: |
+              choco install terraform -y
+              terraform -version
+            displayName: "Install Terraform"
+
+          - download: current
+            artifact: tfplan
+
+          - task: AzureCLI@2
+            displayName: "Terraform Init (Remote State)"
+            inputs:
+              azureSubscription: "SC-Azure-Terraform"
+              scriptType: "ps"
+              scriptLocation: "inlineScript"
+              inlineScript: |
+                cd iac-vm-lab
+                terraform init `
+                  -backend-config="resource_group_name=$(TFSTATE_RG)" `
+                  -backend-config="storage_account_name=$(TFSTATE_STORAGE)" `
+                  -backend-config="container_name=$(TFSTATE_CONTAINER)" `
+                  -backend-config="key=$(TFSTATE_KEY)"
+
+          - task: AzureCLI@2
+            displayName: "Terraform apply (from plan)"
+            inputs:
+              azureSubscription: "SC-Azure-Terraform"
+              scriptType: "ps"
+              scriptLocation: "inlineScript"
+              inlineScript: |
+                cd iac-vm-lab
+                terraform apply -auto-approve "$(Pipeline.Workspace)\tfplan\tfplan"
