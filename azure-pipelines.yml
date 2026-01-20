@@ -107,4 +107,4 @@ stages:
               scriptType: "ps"
               scriptLocation: "inlineScript"
               inlineScript: |
-                terraform apply -auto-approve "$(Pipeline.Workspace)\tfplan\tfplan"
+                terraform apply -auto-approve -refresh=false "$(Pipeline.Workspace)\tfplan\tfplan"
