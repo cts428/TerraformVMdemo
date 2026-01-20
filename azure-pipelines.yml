@@ -28,7 +28,6 @@ stages:
         scriptType: "ps"
         scriptLocation: "inlineScript"
         inlineScript: |
-          cd iac-vm-lab
           terraform init `
             -backend-config="resource_group_name=$(TFSTATE_RG)" `
             -backend-config="storage_account_name=$(TFSTATE_STORAGE)" `
@@ -36,12 +35,10 @@ stages:
             -backend-config="key=$(TFSTATE_KEY)"
 
     - powershell: |
-        cd iac-vm-lab
         terraform fmt -check
       displayName: "Terraform fmt (check)"
 
     - powershell: |
-        cd iac-vm-lab
         terraform validate
       displayName: "Terraform validate"
 
@@ -52,7 +49,6 @@ stages:
         scriptType: "ps"
         scriptLocation: "inlineScript"
         inlineScript: |
-          cd iac-vm-lab
           terraform plan `
             -out=tfplan `
             -var="location=$(TF_LOCATION)" `
@@ -65,7 +61,7 @@ stages:
             -var="subnet_cidr=$(TF_SUBNET_CIDR)" `
             -var="allowed_rdp_ip=$(TF_ALLOWED_RDP_IP)"
 
-    - publish: iac-vm-lab/tfplan
+    - publish: tfplan
       artifact: tfplan
       displayName: "Publish tfplan artifact"
 
@@ -98,7 +94,6 @@ stages:
               scriptType: "ps"
               scriptLocation: "inlineScript"
               inlineScript: |
-                cd iac-vm-lab
                 terraform init `
                   -backend-config="resource_group_name=$(TFSTATE_RG)" `
                   -backend-config="storage_account_name=$(TFSTATE_STORAGE)" `
@@ -112,5 +107,4 @@ stages:
               scriptType: "ps"
               scriptLocation: "inlineScript"
               inlineScript: |
-                cd iac-vm-lab
                 terraform apply -auto-approve "$(Pipeline.Workspace)\tfplan\tfplan"
